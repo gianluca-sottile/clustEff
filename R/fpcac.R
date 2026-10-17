@@ -66,7 +66,7 @@ fpca_bspline <- function(curves, t = NULL, nbasis = 5, norder = 3, nharmonics = 
        fitted = Phi %*% C, basis = Phi, gram = W, t = t)
 }
 
-#' Gauss-Legendre nodes and weights on [-1, 1] (Golub-Welsch).
+#' Gauss-Legendre nodes and weights on the interval from -1 to 1 (Golub-Welsch).
 #' @noRd
 gauss_legendre <- function(m) {
   if (m == 1) return(list(x = 0, w = 2))

@@ -84,7 +84,7 @@ test_that("extract_curves() and clustEff() on qrcm models", {
   x1 <- runif(n); x2 <- runif(n); x3 <- runif(n)
   u <- runif(n)
   y <- qnorm(u) + (1 + u) * x1 + (1 + u) * x2 - (2 * u^2) * x3
-  m <- qrcm::iqr(y ~ x1 + x2 + x3, formula.p = ~ I(p) + I(p^2))
+  m <- suppressWarnings(qrcm::iqr(y ~ x1 + x2 + x3, formula.p = ~ I(p) + I(p^2)))
   ec <- extract_curves(m)
   expect_s3_class(ec, "effects_curves")
   expect_equal(colnames(ec$curves), c("x1", "x2", "x3"))
