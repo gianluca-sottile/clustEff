@@ -1,0 +1,162 @@
+---
+title: "Clusters of effects curves and waveforms with clustEff"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Clusters of effects curves and waveforms with clustEff}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7, fig.height = 4)
+```
+
+```{r setup}
+library(clustEff)
+```
+
+## 1. The dissimilarity
+
+Sottile and Adelfio (2019) proposed a dissimilarity between curves
+$\beta_1(p), \dots, \beta_q(p)$ evaluated on a common grid that combines
+
+* their **shape**: $d_{shape}(p) = I\{sign(\beta_i''(p)) = sign(\beta_{i'}''(p))\}$,
+  the concordance of convexity;
+* their **closeness**: $d_{distance}(p) = I\{|\beta_i(p) - \beta_{i'}(p)| \le f_\alpha(p)\}$,
+  where $f_\alpha(p)$ is the $\alpha$-quantile of the distances between all pairs of
+  curves at $p$;
+
+as $d(i, i') = 1 - \int d_{shape}(p)\, d_{distance}(p)\,dp$. The dissimilarity is
+computed by `distshape()` and used by `clustEff()` for hierarchical clustering.
+
+## 2. Waveforms
+
+We simulate 16 noisy waveforms from three shapes, as in Section 4.2 of the paper,
+with a noise variance that changes over time.
+
+```{r waves}
+set.seed(1234)
+tt <- seq(0, 1, length.out = 200)
+sdt <- 0.3 * sqrt(pmax(4 * pmax(tt - 0.2, 0) - 8 * pmax(tt - 0.5, 0) + 4 * pmax(tt - 0.8, 0), 0))
+W <- cbind(sapply(1:6, function(i) sin(3 * pi * tt) + rnorm(200, 0, sdt)),
+           sapply(1:6, function(i) cos(3 * pi * tt) + rnorm(200, 0, sdt)),
+           sapply(1:4, function(i) sin(3 * pi * tt) * cos(pi * tt) + rnorm(200, 0, sdt)))
+```
+
+The shape component uses second derivatives, so noisy curves are smoothed first
+(`smooth = TRUE`, smoothing splines). With waveforms the default $\alpha$ is 0.5.
+
+```{r waves-fit}
+fit <- clustEff(W, p = tt, k = c(2, 6), smooth = TRUE)
+fit
+summary(fit)
+```
+
+```{r waves-plot, fig.height = 7}
+oldpar <- par(mfrow = c(2, 2))
+plot(fit, "dendrogram")
+plot(fit, "clusters")
+plot(fit, "silhouette")
+plot(fit, "criterion")
+par(oldpar)
+```
+
+## 3. Effects curves of quantile regression coefficients models
+
+In quantile regression coefficients modeling (QRCM, Frumento and Bottai, 2016;
+package 'qrcm') each coefficient is a parametric function of the quantile order,
+$\beta_j(p \mid \theta) = \theta_j^\top b(p)$. `extract_curves()` extracts the
+effects curves, their pointwise confidence bands and their (exact) second
+derivatives from one or more `qrcm::iqr()` fits.
+
+Following the multivariate example of the paper, we fit one model for each of 9
+responses and cluster the effects of the covariate `x`, which belong to three
+groups.
+
+```{r qrcm, eval = requireNamespace("qrcm", quietly = TRUE)}
+set.seed(1)
+n <- 500
+x <- runif(n, 0, 5)
+slope <- list(function(u) 0.5 + 0.5 * u + u^2,
+              function(u) -0.5 + 0.5 * u + u^2,
+              function(u) 0.3 - 0.5 * u - u^2 + 2 * u^3)
+fits <- lapply(1:9, function(r) {
+  u <- runif(n)
+  y <- 1 + qnorm(u) + slope[[(r - 1) %/% 3 + 1]](u) * x
+  qrcm::iqr(y ~ x, formula.p = ~ I(p) + I(p^2) + I(p^3))
+})
+names(fits) <- paste0("y", 1:9)
+ec <- extract_curves(fits, which = "x")
+ec
+fit2 <- clustEff(ec, k = 3)
+summary(fit2)
+oldpar <- par(mfrow = c(1, 2))
+plot(fit2, "dendrogram")
+plot(fit2, "clusters")
+par(oldpar)
+```
+
+With confidence bands the default $\alpha$ is 0.25: two curves are *close* at
+$p$ if their distance is among the 25% smallest distances between pairs of
+curves. With 9 curves in three groups of three, the pairs within groups are
+exactly 25% of all pairs, so $\alpha$ should not be smaller than this
+proportion. Here the number of clusters is fixed after inspecting the
+dendrogram; with only nine noisy estimated curves the automatic criteria are
+less reliable. `fit2$signif` indicates, for each cluster, where its mean band
+excludes zero.
+
+## 4. Choosing the number of clusters
+
+When `k` is a range, `criterion` selects the number of clusters:
+
+* `"height"` (default): the largest gap between consecutive heights of the
+  dendrogram;
+* `"pi.out"`: average proportion of curves outside the mean bands of their
+  cluster (Sottile and Adelfio, 2019, Section 3.1), elbow rule;
+* `"dist.rel"`: $l\,\max_j$ of the mean $L_1$ distance from the cluster mean
+  (Section 3.1), first number of clusters at which it stops decreasing;
+* `"silhouette"`: average silhouette width (default of 'clustEff' 0.3.x).
+
+A small simulation with two to four groups of polynomial effects curves gives an
+idea of their behaviour (proportion of replicates in which the true number of
+groups is selected):
+
+```{r sim}
+p <- seq(0.01, 0.99, 0.01)
+th <- list(c(.5, .5, 1, 2), c(-3, .5, 1, .5), c(.3, -.5, -1, 2), c(2.5, .5, 1, 2))
+crits <- c("height", "pi.out", "dist.rel", "silhouette")
+set.seed(3)
+res <- t(sapply(1:12, function(r) {
+  G <- 2 + r %% 3
+  B <- do.call(cbind, lapply(1:G, function(g) sapply(1:8, function(i) {
+    t <- th[[g]] + rnorm(4, 0, 0.3); t[1] + t[2] * p + t[3] * p^2 + t[4] * p^3 })))
+  sapply(crits, function(cr) clustEff(B, B - 0.6, B + 0.6, p = p, k = c(2, 7), criterion = cr)$k == G)
+}))
+colMeans(res)
+```
+
+## 5. FPCAC
+
+The FPCAC algorithm of Adelfio et al. (2011) represents the curves on a B-spline
+basis, computes their functional principal component scores and applies a
+trimmed k-means to the scores; the trimmed curves (cluster 0) are potential
+outliers.
+
+```{r fpcac}
+W2 <- cbind(W[, 1:12], sapply(1:2, function(i) rnorm(200, 0, 0.3)))   # two outliers
+set.seed(1)
+o <- opt.fpcac(W2, t = tt, k.max = 5, nbasis = 12, alpha = 0.15)
+o
+f <- fpcac(W2, t = tt, K = o$K.opt, nbasis = 12, alpha = 0.15)
+f
+plot(f)
+```
+
+## References
+
+* Adelfio, G., Chiodi, M., D'Alessandro, A. and Luzio, D. (2011). FPCA algorithm
+  for waveform clustering. *Journal of Communication and Computer*, 8, 494-502.
+* Frumento, P. and Bottai, M. (2016). Parametric modeling of quantile regression
+  coefficient functions. *Biometrics*, 72(1), 74-84.
+* Sottile, G. and Adelfio, G. (2019). Clusters of effects curves in quantile
+  regression models. *Computational Statistics*, 34, 551-569.

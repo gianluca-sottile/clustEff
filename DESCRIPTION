@@ -1,0 +1,39 @@
+Package: clustEff
+Type: Package
+Title: Clusters of Effects Curves in Quantile Regression Models
+Version: 1.0.0
+Authors@R: c(
+    person("Gianluca", "Sottile", email = "gianluca.sottile@unipa.it",
+           role = c("aut", "cre"), comment = c(ORCID = "0000-0001-9347-7251")),
+    person("Giada", "Adelfio", email = "giada.adelfio@unipa.it", role = "aut"))
+Description: Clustering of curves based on a dissimilarity that combines the
+    concordance of their shapes and their closeness, as proposed by Sottile
+    and Adelfio (2019) <doi:10.1007/s00180-018-0817-8>. The method can be
+    applied to the effects curves of quantile regression coefficients models
+    fitted with 'qrcm', with univariate or multivariate responses, and to
+    curves observed in time, as in functional data analysis. The package also
+    implements the clustering of waveforms by trimmed k-means of functional
+    principal component scores (Adelfio, Chiodi, D'Alessandro and Luzio, 2011).
+License: GPL-2
+URL: https://github.com/gianluca-sottile/clustEff
+BugReports: https://github.com/gianluca-sottile/clustEff/issues
+Depends:
+    R (>= 4.1.0)
+Imports:
+    cluster,
+    graphics,
+    grDevices,
+    splines,
+    stats
+Suggests:
+    fda,
+    knitr,
+    qrcm (>= 3.0),
+    rmarkdown,
+    testthat (>= 3.0.0)
+VignetteBuilder: knitr
+Config/testthat/edition: 3
+Encoding: UTF-8
+Language: en-US
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
