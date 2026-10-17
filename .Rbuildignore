@@ -9,3 +9,5 @@
 ^pkgdown$
 ^LICENSE\.md$
 ^\.DS_Store$
+^doc$
+^Meta$
