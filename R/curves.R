@@ -21,8 +21,9 @@
 #' with standard errors from `predict(object, type = "beta", se = TRUE)`.
 #' The second derivatives \eqn{\hat\beta_j''(p)}, used by the shape component of
 #' the dissimilarity of [distshape()], are computed by central differences of the
-#' smooth fitted functions (they are exact up to rounding errors when
-#' \eqn{\beta(p)} is a polynomial in \eqn{p}).
+#' smooth fitted functions (step \eqn{10^{-3}}; exact up to rounding errors when
+#' \eqn{\beta(p)} is a polynomial of degree up to 3 in \eqn{p}, and very accurate
+#' otherwise, unlike derivatives of interpolating splines of the estimates).
 #'
 #' With a list of models (e.g., the same covariates for different responses, as in
 #' the multivariate case of Sottile and Adelfio, 2019), the curves are named
@@ -60,6 +61,7 @@
 #' }
 #' @export
 extract_curves <- function(object, p = seq(0.01, 0.99, 0.01), which, level = 0.95) {
+  if (!requireNamespace("qrcm", quietly = TRUE)) stop("package 'qrcm' is required", call. = FALSE)
   if (inherits(object, "iqr")) object <- list(object)
   if (!is.list(object) || !all(vapply(object, inherits, TRUE, what = "iqr")))
     stop("'object' must be an object of class \"iqr\" or a list of such objects", call. = FALSE)
@@ -94,7 +96,9 @@ extract_curves <- function(object, p = seq(0.01, 0.99, 0.01), which, level = 0.9
       info <- rbind(info, data.frame(model = mnames[m], coefficient = rn[j], stringsAsFactors = FALSE))
     }
   }
+  if (is.null(out$curves)) stop("no coefficients selected", call. = FALSE)
   nm <- if (length(object) == 1) info$coefficient else paste(info$model, info$coefficient, sep = ":")
+  nm <- make.unique(nm)
   for (a in names(out)) { dimnames(out[[a]]) <- list(NULL, nm) }
   out$p <- p
   out$level <- level
@@ -103,6 +107,9 @@ extract_curves <- function(object, p = seq(0.01, 0.99, 0.01), which, level = 0.9
   out
 }
 
+#' @rdname extract_curves
+#' @param x an object of class `"effects_curves"`.
+#' @param ... not used.
 #' @export
 print.effects_curves <- function(x, ...) {
   cat("\nEffects curves:", ncol(x$curves), "curves evaluated at", length(x$p), "values of p in [",
@@ -125,7 +132,10 @@ as_curves <- function(curves, lower = NULL, upper = NULL, p = NULL) {
   if (inherits(curves, "effects_curves")) {
     if (is.null(lower)) lower <- curves$lower
     if (is.null(upper)) upper <- curves$upper
-    if (is.null(p)) p <- curves$p
+    if (!is.null(p) && !isTRUE(all.equal(as.numeric(p), curves$p)))
+      stop("the grid 'p' of an \"effects_curves\" object cannot be changed: use extract_curves(..., p = )",
+           call. = FALSE)
+    p <- curves$p
     d2 <- curves$d2
     curves <- curves$curves
   }
@@ -144,6 +154,7 @@ as_curves <- function(curves, lower = NULL, upper = NULL, p = NULL) {
     lower <- as.matrix(lower); upper <- as.matrix(upper)
     if (any(dim(lower) != dim(curves)) || any(dim(upper) != dim(curves)))
       stop("'lower' and 'upper' must have the same dimensions as 'curves'", call. = FALSE)
+    if (anyNA(lower) || anyNA(upper)) stop("'lower' and 'upper' cannot contain missing values", call. = FALSE)
     dimnames(lower) <- dimnames(upper) <- dimnames(curves)
   }
   if (!is.null(d2)) dimnames(d2) <- dimnames(curves)

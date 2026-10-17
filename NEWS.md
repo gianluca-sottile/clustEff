@@ -22,16 +22,17 @@
   | Removed in 1.0.0 | Use instead |
   |---|---|
   | `extract.object(Y, X, ...)` | fit the models with `qrcm::iqr()`, then `extract_curves(model)` or `extract_curves(list_of_models)` |
-  | `clustEff(Beta, Beta.lower, Beta.upper, ...)` (named) | `clustEff(curves, lower, upper, ...)` (positional calls still work) |
+  | `clustEff(Beta, Beta.lower, Beta.upper, k, ...)` | `clustEff(curves, lower, upper, p, k, ...)`: the first three positional arguments are unchanged, but the fourth is now the grid `p` (pass `k` by name) |
   | `diss.mat`, `cut.method`, `approx.spline`, `nbasis`, `trace`, `ask`, `plot` | `diss`, `criterion`, `smooth`/`df`, `verbose`, a fixed `k`, `plot()` |
-  | `fpcac(X, fd, niter, Ksteps, seed, disp)` | `fpcac(curves, t, nstart, iter.max)`, `set.seed()`, `verbose` |
+  | `fpcac(X, K, fd, niter, Ksteps, seed, disp)` | `fpcac(curves, t, K, nstart, iter.max)` (the second argument is now `t`), `set.seed()`, `verbose` |
+  | `opt.fpcac()` correlation distance between scores (default) | Euclidean distance between scores (`diss` to supply another) |
   | `opt.fpcac(..., method)` | `opt.fpcac(..., criterion)` |
 
 ## New features
 
 * `clustEff()` accepts a matrix of curves, the output of `extract_curves()`, or
-  directly models fitted with `qrcm::iqr()`; the grid `p` can be supplied; exact
-  second derivatives are used for effects curves.
+  directly models fitted with `qrcm::iqr()`; the grid `p` can be supplied; for
+  effects curves the second derivatives are computed from the fitted functions.
 * `extract_curves()`: effects curves, pointwise bands (any `level`) and second
   derivatives from one or more `qrcm::iqr()` fits.
 * Vectorized dissimilarity with O(q^2) memory (it was O(n q^2)).

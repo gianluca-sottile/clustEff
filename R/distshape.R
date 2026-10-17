@@ -23,9 +23,9 @@
 #' @param d an optional matrix of derivatives of order `deriv` of the curves (same
 #'   dimensions as `curves`). If missing they are computed by interpolating
 #'   splines, or taken from an `"effects_curves"` object (second derivatives).
-#' @param shape.tol derivatives smaller than `shape.tol * max(abs(d))` in absolute
-#'   value are treated as zero, so that, e.g., two linear curves are concordant in
-#'   shape.
+#' @param shape.tol derivatives smaller than `shape.tol` times the scale of the
+#'   curve (the largest absolute value of the curve or of its derivative) are
+#'   treated as zero, so that, e.g., two linear curves are concordant in shape.
 #' @param legacy logical: if `TRUE`, the dissimilarity of 'clustEff' 0.3.x is
 #'   computed (first derivative, `combine = "mean"`, grid `(1:n)/n`, equal weights);
 #'   the arguments `p`, `deriv`, `combine`, `d` and `shape.tol` are then ignored.
@@ -50,7 +50,8 @@
 #' and two zero derivatives are concordant, which avoids that, e.g., two linear
 #' curves are always discordant. The shape component alone is a Hamming distance
 #' between the sign patterns; the distance component, based on a threshold, does
-#' not satisfy the triangle inequality in general.
+#' not satisfy the triangle inequality in general. With only two curves the
+#' distance component is always 1, and `step = "both"` reduces to `"shape"`.
 #'
 #' @return An object of class `"dist"` (see [stats::dist()]) with attributes
 #'   `alpha`, `step`, `deriv`, `combine` and `legacy`.
@@ -93,7 +94,12 @@ distshape <- function(curves, p = NULL, alpha = 0.5, step = c("both", "shape", "
          else curve_derivative(B, pg, deriv)
     if (any(dim(D) != dim(B))) stop("'d' must have the same dimensions as 'curves'", call. = FALSE)
     S <- sign(D)
-    if (!legacy) S[abs(D) <= shape.tol * max(abs(D))] <- 0
+    if (!legacy) {
+      # tolerance relative to the scale of each curve (curves may be on different
+      # scales): the largest of its derivative and of the curve itself
+      sc <- pmax(apply(abs(D), 2, max), apply(abs(B), 2, max), .Machine$double.xmin)
+      S[abs(D) <= shape.tol * rep(sc, each = n)] <- 0
+    }
   }
 
   up <- upper.tri(diag(q))

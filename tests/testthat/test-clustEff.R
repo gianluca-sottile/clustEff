@@ -3,7 +3,7 @@ test_that("legacy options reproduce clustEff 0.3.1", {
   w <- ref$wave
   o1 <- clustEff(w$W, k = c(2, 5), legacy = TRUE)
   expect_equal(unname(o1$clusters), unname(w$o1$clusters))
-  expect_equal(unname(o1$criterion[1:4]), unname(w$o1$distance))
+  expect_equal(unname(o1$criterion), unname(w$o1$distance))
   expect_equal(o1$mean, w$o1$X.mean, ignore_attr = TRUE)
   o2 <- clustEff(w$W, k = 3, method = "average", legacy = TRUE)
   expect_equal(unname(o2$clusters), unname(w$o2$clusters))
@@ -28,7 +28,7 @@ test_that("effects curves: the true groups are recovered", {
   for (cr in c("pi.out", "dist.rel", "silhouette")) {
     f <- clustEff(s$B, s$L, s$U, p = s$p, k = c(2, 6), criterion = cr)
     expect_true(f$k %in% 2:6)
-    expect_length(f$criterion, if (cr == "silhouette") 6 else 7)
+    expect_length(f$criterion, if (cr == "silhouette") 5 else 7)
   }
 })
 
@@ -98,4 +98,19 @@ test_that("extract_curves() and clustEff() on qrcm models", {
   ec2 <- extract_curves(list(a = m, b = m2), which = "x1")
   expect_equal(colnames(ec2$curves), c("a:x1", "b:x1"))
   expect_error(extract_curves(m, which = "zz"), "does not match")
+})
+
+test_that("edge cases: few curves, k = q, criteria at the boundary", {
+  s <- sim_effects(G = 2, m = 3)
+  f <- clustEff(s$B[, 1:4], p = s$p)
+  expect_equal(f$settings$k, c(2, 3))
+  f2 <- clustEff(s$B, p = s$p, k = ncol(s$B))
+  expect_equal(f2$k, 6)
+  expect_null(f2$silhouette)
+  f3 <- clustEff(s$B, p = s$p, k = c(2, 5), criterion = "silhouette")
+  expect_true(f3$k %in% 2:5)
+  f4 <- clustEff(s$B[, 1:2], p = s$p)
+  expect_equal(f4$k, 2)
+  expect_error(clustEff(s$B, s$L, s$U, c(2, 5)), "not 'k'")
+  expect_error(fpcac(s$B, 2), "not 'K'")
 })

@@ -52,6 +52,8 @@ test_that("opt.fpcac selects the number of clusters", {
   o2 <- opt.fpcac(s$W, t = s$t, k.max = 4, criterion = "wss", nbasis = 10, nstart = 5)
   expect_true(o2$K.opt %in% 2:4)
   expect_output(print(o), "Selected number of clusters: 3")
+  o1 <- opt.fpcac(s$W, t = s$t, k.max = 3, nbasis = 10, nharmonics = 1, nstart = 5)
+  expect_true(o1$K.opt %in% 1:3)
   grDevices::pdf(NULL)
   on.exit(grDevices::dev.off())
   expect_silent(plot(o))

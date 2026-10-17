@@ -66,8 +66,8 @@ par(oldpar)
 In quantile regression coefficients modeling (QRCM, Frumento and Bottai, 2016;
 package 'qrcm') each coefficient is a parametric function of the quantile order,
 $\beta_j(p \mid \theta) = \theta_j^\top b(p)$. `extract_curves()` extracts the
-effects curves, their pointwise confidence bands and their (exact) second
-derivatives from one or more `qrcm::iqr()` fits.
+effects curves, their pointwise confidence bands and their second
+derivatives (computed from the fitted coefficient functions) from one or more `qrcm::iqr()` fits.
 
 Following the multivariate example of the paper, we fit one model for each of 9
 responses and cluster the effects of the covariate `x`, which belong to three

@@ -14,7 +14,8 @@
 #' @param p the grid on which the curves are evaluated (quantile orders, or
 #'   times). By default `(1:n)/n`, or the grid of an `"effects_curves"` object.
 #' @param k the number of clusters: a single value, or a range `c(kmin, kmax)`
-#'   in which the number of clusters is selected with `criterion`.
+#'   in which the number of clusters is selected with `criterion`. The default
+#'   is `c(2, min(5, q - 1))` for \eqn{q} curves.
 #' @param alpha the quantile of the pointwise distances used by [distshape()].
 #'   The default is 0.25 when bands are available (effects curves) and 0.5
 #'   otherwise (waveforms), as suggested by Sottile and Adelfio (2019).
@@ -37,7 +38,10 @@
 #' @param stand logical: standardize each curve (center and scale over the grid)?
 #' @param legacy logical: reproduce 'clustEff' 0.3.x (dissimilarity with
 #'   `legacy = TRUE` in [distshape()], `alpha = 0.5`, criterion `"silhouette"`
-#'   unless specified).
+#'   unless specified). Remaining differences with 0.3.x: `"height"` (formerly
+#'   `cut.method = "length"`) searches only within the range `k`; with
+#'   `stand = TRUE` also the bands are standardized; without bands the cluster
+#'   bands use `conf.level` (0.3.x always used the quantiles 0.1 and 0.9).
 #' @param verbose logical: print the progress?
 #' @param ... arguments of 'clustEff' 0.3.x that were removed (they give an
 #'   informative error, see [clustEff-defunct]).
@@ -88,8 +92,9 @@
 #' \item{criterion}{the values of the criterion for each number of clusters.}
 #' \item{measures}{a data frame with, for each cluster, its size, the average
 #'   area between the curves and the mean curve (eq. 2 of the paper), the
-#'   correlation distance \eqn{\rho_{dist}} (eq. 3), the average silhouette width
-#'   and the average within-cluster dissimilarity.}
+#'   correlation distance \eqn{\rho_{dist} = 1 - } average pairwise correlation
+#'   between the curves of the cluster (eq. 3), the average silhouette width and
+#'   the average within-cluster dissimilarity.}
 #' \item{settings}{the options used.}
 #' @references Sottile, G. and Adelfio, G. (2019). Clusters of effects curves in
 #'   quantile regression models. *Computational Statistics*, 34, 551-569.
@@ -117,7 +122,7 @@
 #' fit2$clusters
 #' plot(fit2)
 #' @export
-clustEff <- function(curves, lower = NULL, upper = NULL, p = NULL, k = c(2, 5), alpha = NULL,
+clustEff <- function(curves, lower = NULL, upper = NULL, p = NULL, k = NULL, alpha = NULL,
                      step = c("both", "shape", "distance"), deriv = 2, combine = c("product", "mean"),
                      shape.tol = 1e-6,
                      criterion = c("height", "pi.out", "dist.rel", "silhouette", "conf.int"),
@@ -135,6 +140,9 @@ clustEff <- function(curves, lower = NULL, upper = NULL, p = NULL, k = c(2, 5), 
                           call. = FALSE)
   if (conf.level <= 0 || conf.level >= 1) stop("'conf.level' must be in (0, 1)", call. = FALSE)
 
+  if (!is.null(p) && length(p) %in% 1:2 && NROW(curves) > 2 && !inherits(curves, "effects_curves"))
+    stop("'p' must be the grid of the curves; in clustEff 1.0.0 the fourth argument is 'p', ",
+         "not 'k': please use k = ", deparse(p), call. = FALSE)
   cv <- as_curves(curves, lower, upper, p)
   B <- cv$curves; L <- cv$lower; U <- cv$upper; pg <- cv$p; d2 <- cv$d2
   n <- nrow(B); q <- ncol(B)
@@ -159,6 +167,7 @@ clustEff <- function(curves, lower = NULL, upper = NULL, p = NULL, k = c(2, 5), 
   }
 
   # number of clusters
+  if (is.null(k)) k <- if (q > 2) c(2, min(5, q - 1)) else 2
   if (!is.numeric(k) || !length(k) %in% 1:2 || any(k < 1) || any(k > q))
     stop(sprintf("'k' must be a number of clusters, or a range c(kmin, kmax), between 1 and %d", q), call. = FALSE)
   k <- sort(unique(round(k)))
@@ -167,7 +176,7 @@ clustEff <- function(curves, lower = NULL, upper = NULL, p = NULL, k = c(2, 5), 
     if (is.null(alpha)) alpha <- 0.5
     if (criterion.missing) criterion <- "silhouette"
   }
-  if (criterion %in% c("pi.out", "conf.int") && !bands)
+  if (length(k) == 2 && criterion %in% c("pi.out", "conf.int") && !bands)
     stop(sprintf("criterion = \"%s\" requires 'lower' and 'upper'", criterion), call. = FALSE)
   if (is.null(alpha)) alpha <- if (bands) 0.25 else 0.5
 
@@ -186,7 +195,7 @@ clustEff <- function(curves, lower = NULL, upper = NULL, p = NULL, k = c(2, 5), 
   if (length(k) == 1) {
     kopt <- k
   } else {
-    ks <- (if (criterion %in% c("pi.out", "dist.rel")) max(1, k[1] - 1) else k[1]):min(k[2] + 1, q)
+    ks <- if (criterion %in% c("pi.out", "dist.rel")) max(1, k[1] - 1):min(k[2] + 1, q) else k[1]:k[2]
     parts <- stats::cutree(hc, k = ks)
     if (!is.matrix(parts)) parts <- matrix(parts, ncol = 1)
     val <- vapply(seq_along(ks), function(m) {
@@ -194,7 +203,7 @@ clustEff <- function(curves, lower = NULL, upper = NULL, p = NULL, k = c(2, 5), 
       switch(criterion,
              pi.out = crit_pi_out(oc, B, L, U, w),
              dist.rel = crit_dist_rel(oc, B, w),
-             silhouette = if (length(unique(oc)) > 1) mean(cluster::silhouette(oc, diss)[, 3]) else NA_real_,
+             silhouette = { s <- safe_silhouette(oc, diss); if (is.null(s)) NA_real_ else mean(s[, 3]) },
              height = { h <- rev(hc$height); if (ks[m] >= 2 && ks[m] <= length(h)) h[ks[m] - 1] - h[ks[m]] else NA_real_ },
              conf.int = crit_conf_int(oc, B, L, U, diss))
     }, numeric(1))
@@ -216,7 +225,9 @@ clustEff <- function(curves, lower = NULL, upper = NULL, p = NULL, k = c(2, 5), 
                      up <- which(val[match(kr + 1, ks)] >= val[match(kr, ks)])
                      if (length(up)) kr[up[1]] else k[2]
                    },
-                   silhouette = , conf.int = , height = ks[inr][which.max(val[inr])])
+                   silhouette = , conf.int = , height = {
+                     if (all(is.na(val[inr]))) k[1] else ks[inr][which.max(val[inr])]
+                   })
     if (verbose) message("selected number of clusters: ", kopt)
   }
 
@@ -240,7 +251,7 @@ clustEff <- function(curves, lower = NULL, upper = NULL, p = NULL, k = c(2, 5), 
     }
   }
   signif <- if (bands) (ML > 0 | MU < 0) else NULL
-  sil <- if (kopt > 1) cluster::silhouette(oc, diss) else NULL
+  sil <- safe_silhouette(oc, diss)
 
   out <- list(call = cl, clusters = oc, k = kopt, p = pg, curves = B, lower = L, upper = U,
               mean = M, mean.lower = ML, mean.upper = MU, signif = signif,
@@ -252,6 +263,14 @@ clustEff <- function(curves, lower = NULL, upper = NULL, p = NULL, k = c(2, 5), 
                               legacy = legacy, conf.level = conf.level, bands = bands))
   class(out) <- "clustEff"
   out
+}
+
+#' Silhouette, or NULL if not defined (one cluster, or as many clusters as curves).
+#' @noRd
+safe_silhouette <- function(oc, diss) {
+  if (length(unique(oc)) < 2 || length(unique(oc)) >= length(oc)) return(NULL)
+  s <- cluster::silhouette(oc, diss)
+  if (is.matrix(s)) s else NULL
 }
 
 #' Average proportion of curves outside the mean bands of their cluster.
@@ -287,7 +306,9 @@ crit_conf_int <- function(oc, B, L, U, diss) {
     BR <- rowMeans(U[, idx, drop = FALSE]); BL <- rowMeans(L[, idx, drop = FALSE])
     mean((colMeans(B[, idx, drop = FALSE] - BR < 0) + colMeans(B[, idx, drop = FALSE] - BL >= 0)) / 2)
   }, numeric(1))
-  sw <- tapply(cluster::silhouette(oc, diss)[, 3], oc, mean)
+  s <- safe_silhouette(oc, diss)
+  if (is.null(s)) return(NA_real_)
+  sw <- tapply(s[, 3], oc, mean)
   sum(tempDist * sw) / sum(tempDist)
 }
 
@@ -313,6 +334,8 @@ cluster_measures <- function(oc, B, M, w, diss, sil) {
   out
 }
 
+#' @rdname clustEff
+#' @param x an object of class `"clustEff"`.
 #' @export
 print.clustEff <- function(x, ...) {
   cat("\nCall:\n", paste(deparse(x$call), sep = "\n", collapse = "\n"), "\n\n", sep = "")
@@ -456,6 +479,7 @@ check_removed <- function(dots, fun) {
            plot = "plot()", trace = "verbose", ask = "k (a single value) after looking at plot(fit, \"dendrogram\")",
            X = "curves", fd = "curves (a matrix of curves)", niter = "nstart", Ksteps = "iter.max",
            seed = "set.seed() before the call", disp = "verbose", method = "criterion")
+  if (fun == "distshape") map["trace"] <- "nothing (distshape() is silent)"
   old <- intersect(nm, names(map))
   if (length(old))
     stop(sprintf("argument(s) of clustEff 0.3.x removed in version 1.0.0: %s. Use instead: %s (see ?%s)",

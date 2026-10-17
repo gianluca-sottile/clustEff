@@ -32,7 +32,8 @@ fpca_bspline <- function(curves, t = NULL, nbasis = 5, norder = 3, nharmonics = 
   if (is.null(t)) t <- seq(0, 1, length.out = n)
   if (length(t) != n) stop("'t' must have one value for each row of 'curves'", call. = FALSE)
   if (nbasis < norder) stop("'nbasis' must be at least 'norder'", call. = FALSE)
-  if (nharmonics > min(nbasis, N - 1)) stop("'nharmonics' is too large", call. = FALSE)
+  if (nharmonics < 1 || nharmonics != round(nharmonics) || nharmonics > min(nbasis, N - 1))
+    stop("'nharmonics' must be an integer between 1 and min(nbasis, number of curves - 1)", call. = FALSE)
   rng <- range(t)
   breaks <- seq(rng[1], rng[2], length.out = nbasis - norder + 2)
   knots <- c(rep(rng[1], norder - 1), breaks, rep(rng[2], norder - 1))
@@ -187,6 +188,9 @@ fpcac <- function(curves, t = NULL, K = 2, nbasis = 5, norder = 3, nharmonics = 
   init <- match.arg(init)
   if (alpha < 0 || alpha >= 1) stop("'alpha' must be in [0, 1)", call. = FALSE)
   X <- as.matrix(curves)
+  if (!is.null(t) && length(t) == 1 && nrow(X) > 1)
+    stop("'t' must be the time points of the curves; in clustEff 1.0.0 the second argument is 't', ",
+         "not 'K': please use K = ", t, call. = FALSE)
   if (is.null(colnames(X))) colnames(X) <- paste0("X", seq_len(ncol(X)))
   if (is.null(t)) t <- seq(0, 1, length.out = nrow(X))
   fp <- fpca_bspline(X, t, nbasis = nbasis, norder = norder, nharmonics = nharmonics)
@@ -218,6 +222,8 @@ fpcac <- function(curves, t = NULL, K = 2, nbasis = 5, norder = 3, nharmonics = 
   out
 }
 
+#' @rdname fpcac
+#' @param x an object of class `"fpcac"`.
 #' @export
 print.fpcac <- function(x, ...) {
   cat("\nCall:\n", paste(deparse(x$call), sep = "\n", collapse = "\n"), "\n\n", sep = "")
@@ -311,8 +317,10 @@ plot.fpcac <- function(x, which, polygon = TRUE, col, ...) {
 #'   decrease of the within-cluster sum of squares from \eqn{K - 1}, as in
 #'   'clustEff' 0.3.x).
 #' @param diss an optional dissimilarity between the curves (class `"dist"`). By
-#'   default the correlation distance \eqn{\sqrt{2(1 - r)}} between the vectors of
-#'   scores.
+#'   default the Euclidean distance between the vectors of scores, consistent with
+#'   the trimmed k-means (`'clustEff'` 0.3.x used the correlation distance
+#'   \eqn{\sqrt{2(1 - r)}} between the vectors of scores, which is degenerate with
+#'   one or two harmonics).
 #' @param ... arguments of 'clustEff' 0.3.x that were removed (informative error).
 #' @return An object of class `"opt.fpcac"`, a list with items `criterion` (the
 #'   values for each \eqn{K}), `K.opt`, `clusters` (matrix of the clusters for
@@ -332,7 +340,7 @@ plot.fpcac <- function(x, which, polygon = TRUE, col, ...) {
 #' }
 #' @export
 opt.fpcac <- function(curves, t = NULL, k.max = 5, criterion = c("silhouette", "wss"), nbasis = 5,
-                      norder = 3, nharmonics = 3, alpha = 0, nstart = 30, iter.max = 10,
+                      norder = 3, nharmonics = 3, alpha = 0, nstart = 30, iter.max = 25,
                       init = c("kmeans++", "random"), diss = NULL, ...) {
   check_removed(list(...), "opt.fpcac")
   criterion <- match.arg(criterion)
@@ -342,16 +350,13 @@ opt.fpcac <- function(curves, t = NULL, k.max = 5, criterion = c("silhouette", "
           nstart = nstart, iter.max = iter.max, init = init))
   clusters <- vapply(fits, function(f) f$clusters, numeric(ncol(as.matrix(curves))))
   colnames(clusters) <- seq_len(k.max)
-  if (is.null(diss)) {
-    S <- fits[[1]]$scores
-    diss <- stats::as.dist(sqrt(pmax(2 * (1 - stats::cor(t(S))), 0)))
-  }
+  if (is.null(diss)) diss <- stats::dist(fits[[1]]$scores)
   Dm <- as.matrix(diss)
   v <- vapply(seq_len(k.max), function(K) {
     oc <- clusters[, K]; keep <- oc > 0
     if (criterion == "silhouette") {
-      if (length(unique(oc[keep])) < 2) return(NA_real_)
-      mean(cluster::silhouette(oc[keep], stats::as.dist(Dm[keep, keep]))[, 3])
+      s <- safe_silhouette(oc[keep], stats::as.dist(Dm[keep, keep]))
+      if (is.null(s)) NA_real_ else mean(s[, 3])
     } else {
       sum(vapply(unique(oc[keep]), function(j) {
         idx <- which(oc == j)
@@ -360,13 +365,15 @@ opt.fpcac <- function(curves, t = NULL, k.max = 5, criterion = c("silhouette", "
     }
   }, numeric(1))
   names(v) <- seq_len(k.max)
-  K.opt <- if (criterion == "silhouette") as.integer(names(which.max(v)))
+  K.opt <- if (criterion == "silhouette") { if (all(is.na(v))) 1L else as.integer(names(which.max(v))) }
            else if (k.max >= 2) as.integer(names(which.min(diff(v)))) else 1L
   out <- list(criterion = v, K.opt = K.opt, clusters = clusters, fits = fits, criterion.name = criterion)
   class(out) <- "opt.fpcac"
   out
 }
 
+#' @rdname opt.fpcac
+#' @param x an object of class `"opt.fpcac"`.
 #' @export
 print.opt.fpcac <- function(x, ...) {
   cat("\nNumber of clusters for FPCAC (criterion: ", x$criterion.name, ")\n\n", sep = "")
@@ -375,6 +382,7 @@ print.opt.fpcac <- function(x, ...) {
   invisible(x)
 }
 
+#' @rdname opt.fpcac
 #' @export
 plot.opt.fpcac <- function(x, ...) {
   L <- list(...)
