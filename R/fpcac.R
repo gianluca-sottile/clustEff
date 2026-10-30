@@ -169,7 +169,7 @@ trimmed_kmeans <- function(X, K, alpha = 0, nstart = 30, iter.max = 25, init = "
 #'
 #'   García-Escudero, L. A. and Gordaliza, A. (2005). A proposal for robust curve
 #'   clustering. *Journal of Classification*, 22, 185-201.
-#'   \doi{10.1007/s00357-005-0013-x}
+#'   \doi{10.1007/s00357-005-0013-8}
 #' @seealso [opt.fpcac()], [clustEff()]
 #' @examples
 #' set.seed(1)

@@ -18,8 +18,10 @@ export(extract_curves)
 export(fpca_bspline)
 export(fpcac)
 export(opt.fpcac)
-importFrom(graphics,abline)
-importFrom(graphics,lines)
-importFrom(graphics,matlines)
-importFrom(graphics,plot)
+importFrom(graphics,
+  abline,
+  lines,
+  matlines,
+  plot
+)
 importFrom(stats,predict)

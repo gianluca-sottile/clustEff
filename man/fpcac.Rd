@@ -90,7 +90,7 @@ Computer}, 8, 494-502.
 
 García-Escudero, L. A. and Gordaliza, A. (2005). A proposal for robust curve
 clustering. \emph{Journal of Classification}, 22, 185-201.
-\doi{10.1007/s00357-005-0013-x}
+\doi{10.1007/s00357-005-0013-8}
 }
 \seealso{
 \code{\link[=opt.fpcac]{opt.fpcac()}}, \code{\link[=clustEff]{clustEff()}}
